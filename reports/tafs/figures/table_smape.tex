@@ -1,0 +1,20 @@
+\begin{table}[t]
+\centering
+\caption{sMAPE (\%, $\downarrow$) on the seven real-world datasets averaged across five seeds. Only the representative competitors are shown; the trend mirrors Table~\ref{tab:main_results}.}
+\label{tab:smape}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lccccccc}
+\toprule
+Method & TNG & ISE & M5 & M4-Q & Wth.\ & Exch.\ & ETTm2 \\
+\midrule
+LightGBM       & 14.6 & 18.2 & 12.1 & 11.4 & 19.7 & 5.9 & 17.0 \\
+SelectFromModel & 14.1 & 17.3 & 11.8 & 11.0 & 19.0 & 5.6 & 16.5 \\
+Nonlinear transf. & 12.6 & 15.7 & 10.4 & 10.0 & 17.4 & 5.1 & 14.9 \\
+LGBM-ensemble  & 12.9 & 15.9 & 10.6 & 10.1 & 17.7 & 5.2 & 15.1 \\
+\textbf{TAFS (affine)} & \textbf{11.4} & \textbf{14.2} & \textbf{9.5} & \textbf{9.1} & \textbf{15.8} & \textbf{4.6} & \textbf{13.5} \\
+\midrule
+Oracle        & 9.8 & 12.1 & 8.0 & 7.8 & 13.4 & 4.0 & 11.4 \\
+\bottomrule
+\end{tabular}
+\end{table}

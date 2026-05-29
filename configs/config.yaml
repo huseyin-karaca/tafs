@@ -1,0 +1,23 @@
+# Hydra root config.
+#
+# The ``experiment`` key selects which experiment to run. Point it at
+# any YAML file under configs/experiment/tafs/.
+#
+# Run the default (synthetic smoke):
+#     python run.py
+#
+# Run a specific experiment with overrides:
+#     python run.py experiment=tafs/synthetic trainer.max_epochs=5
+#     make run CONFIG=tafs/synthetic OVERRIDES="trainer.max_epochs=5"
+#
+# Every key in the composed config can be overridden on the CLI.
+
+defaults:
+  - experiment: tafs/smoke   # default: quick smoke run with no real training
+  - trainer: default
+  - mlflow: local
+  - logging: default
+  - _self_
+
+# Honoured at the top of run.py before any computation starts.
+float32_matmul_precision: high

@@ -1,0 +1,26 @@
+# Data config for the synthetic TAFS regime-switch experiment.
+#
+# Referenced by experiment configs via the Hydra defaults list:
+#   defaults:
+#     - /data/tafs/synthetic@datamodule_cfg
+#
+# Override any field on the CLI:
+#   python run.py experiment=tafs/synthetic datamodule_cfg.n_trajectories=200
+
+_target_: src.tafs.data.datamodule.TAFSSyntheticDataModule
+
+cache_dir: data/processed/tafs/synthetic
+
+# Data generation parameters (change these to regenerate the cache).
+n_trajectories: 500   # number of synthetic time series
+T: 400                # length of each trajectory
+regime_change: 200    # time step where regime switches from A to B
+noise_std: 0.3        # observation noise standard deviation
+seed: 0               # controls both data generation and initial split
+
+# DataLoader parameters.
+batch_size: 64
+num_workers: 0        # 0 = load in main process (fast for small datasets)
+train_ratio: 0.7
+val_ratio: 0.1        # test_ratio = 1 - train_ratio - val_ratio = 0.2
+split_mode: random    # 'random' (default) or 'chronological'

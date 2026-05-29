@@ -1,0 +1,293 @@
+\documentclass[journal]{IEEEtran}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{graphicx}
+
+\usepackage{booktabs}
+\usepackage{makecell}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+\usetikzlibrary{arrows.meta, positioning, calc, shapes.geometric}
+\usepackage{cite}
+\usepackage{xcolor}
+
+\hyphenation{op-tical net-works semi-conduc-tor}
+
+\begin{document}
+
+\title{TAFS: Transformer-Attentive Feature Selection for Sequential Regression}
+
+\author{Huseyin~Karaca,
+        and Suleyman S.~Kozat,~\IEEEmembership{Senior~Member,~IEEE}
+\thanks{H. Karaca, and S. S. Kozat are with Bilkent University, Ankara, Turkiye. H. Karaca are also with Turk Telekom, Ankara, Turkiye (e-mails: huseyin.karaca@bilkent.edu.tr; kozat@ee.bilkent.edu.tr).}%
+\thanks{This work is supported by The Scientific and Technological Research Council of Turkiye (TUBITAK) 1515 Frontier R\&D Laboratories Support Program for Turk Telekom 6G R\&D Lab under project number 5249902, and by the TUBITAK 2210-A program.}%
+}
+% \markboth{Preprint -- TAFS}{Anonymous: TAFS}
+\markboth{Draft, \today}{TAFS: Transformer-Attentive Feature Selection for Sequential Regression}
+
+\maketitle
+
+\begin{abstract}
+This article addresses one-step and multi-step sequential regression in regimes where the input is a high-dimensional vector of engineered features and the underlying data-generating process is non-stationary. In this setting, a fixed pool of pretrained base forecasters covers complementary regions of the input space, and the operational question is how to combine them in a manner that tracks the time-varying importance of the features. We introduce TAFS, a framework that treats each engineered feature as a token, processes it with a feature-axis transformer conditioned on a context summary of the recent history, and reads out combination weights over the base forecasters under one of three constraint regimes (unconstrained, affine, convex). The attention weights produced by the transformer provide a time-varying feature-importance signal, and the pipeline is trained end-to-end on cumulative prediction error. On a controlled synthetic regime-switch task TAFS reallocates its attention within tens of steps after a change point and approaches the per-step oracle. On seven real datasets spanning energy, finance, retail and meteorology, TAFS lowers average MASE by up to 14\% relative to the lowest-error static-transform baseline and by 9\% relative to a meta-learning ensemble, while inference cost remains dominated by the cached base predictions.
+% We also discuss a short convergence argument for the smooth-loss case.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Time-series forecasting, feature selection, transformers, attention, meta-learning, ensemble of forecasters.
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+\subsection{Background}
+
+Sequential regression problems arising in energy demand forecasting, financial return prediction, retail sales planning and meteorology require the construction of several hundred engineered features (lags, rolling statistics, calendar variables, exogenous series) from several hundred to several thousand observations~\cite{box2015tsbook,makridakis2020m4,makridakis2022m5}. In this regime no single forecaster is uniformly optimal. Gradient-boosted decision trees~\cite{ke2017lightgbm,chen2016xgboost,prokhorenkova2018catboost} and regularised linear models~\cite{tibshirani1996lasso} are accurate on tabular features; recurrent~\cite{hochreiter1997lstm,salinas2020deepar} and basis-expansion networks~\cite{oreshkin2020nbeats} capture longer dependencies; classical state-space models such as SARIMAX~\cite{box2015tsbook} model seasonality. The relative ranking of these models varies both across datasets and across regimes \emph{within} a single dataset.
+
+The relevance of an individual engineered feature is also time-varying. A demand series dominated by a weekly cycle in one quarter may shift to being dominated by a holiday calendar in another; an exchange rate driven by an interest-rate differential under one monetary regime may transition to being driven by trade-balance shocks under another. Static feature-selection pipelines, whether filter, wrapper, or embedded~\cite{guyon2003introfs,kononenko1994relieff}, fix the selection at training time and cannot react to such shifts. Static learned feature transforms address this only partially: a diagonal gate, a linear projection or a low-rank bottleneck can sharpen the relevant directions on average, but those directions remain fixed once training terminates.
+
+\subsection{Related Work}
+
+% \textbf{Feature selection and learned feature transforms.} 
+Filter methods such as Pearson correlation and mutual-information ranking~\cite{cover1991ifs}, wrapper methods such as forward/backward selection~\cite{guyon2003introfs} and embedded methods such as Lasso~\cite{tibshirani1996lasso} or tree-based importance~\cite{breiman2001randomforest} all collapse the relevance signal to a single, dataset-level score. Learned feature transforms attached to a downstream selector or regressor improve over this by adapting the geometry of the feature space to the supervised objective; popular parameterizations are diagonal gating, full linear projections, low-rank bottlenecks, and small nonlinear MLPs. These transforms are static: once the parameters are estimated, the same map is applied at every time step.
+
+% \textbf{Combining forecasters.}
+Combining several forecasters with learned weights is a well-established methodology, with stacking~\cite{wolpert1992stacking,breiman1996stacked} as the canonical instance and time-varying weighting schemes as recurring refinements~\cite{vilalta2002metalearning}. Mixture-of-experts gating~\cite{jacobs1991moe,shazeer2017moe} produces input-conditional weights through a soft gate, and recent work applies MoE formulations to forecasting~\cite{shi2024timemoe}. Such combiners operate on a fixed feature representation; they do not modulate which features the downstream predictor consumes.
+
+% \textbf{Transformers for time series.} 
+Transformers~\cite{vaswani2017attention} have been adapted to forecasting along two axes: (i) the time axis, with sparse or decomposition-based attention~\cite{zhou2021informer,wu2021autoformer}, and (ii) the variable axis, where each variable becomes a token~\cite{liu2024itransformer,nie2023patchtst}. Linear baselines remain accurate on standard benchmarks~\cite{zeng2023dlinear}, indicating that the benefit of attention is in adaptivity rather than in raw capacity. Interpretable variants such as the Temporal Fusion Transformer~\cite{lim2021tft} expose per-feature importance through variable-selection networks; the importance there is produced by an independent gating subnetwork rather than by the attention mechanism that drives the downstream prediction.
+
+% \textbf{Position of this work.} 
+TAFS combines three ingredients that have appeared separately in the literature but, to our knowledge, not together: (i) a feature-axis transformer whose own attention mass on each feature token is the time-varying importance signal; (ii) a context token, derived from the recent target history and from regime indicators, that conditions this attention on the local state of the series; and (iii) a constrained combination head that maps the transformer output to weights over a pool of pretrained base forecasters, under unconstrained, affine, or convex regimes. The whole pipeline is trained end-to-end on cumulative prediction error, and the base forecasters are kept frozen so that inference cost remains close to running them once.
+
+\subsection{Contributions}
+
+\begin{itemize}
+\item We introduce TAFS, a framework for sequential regression that performs joint, time-varying feature selection and forecaster combination through a feature-axis transformer with context conditioning.
+\item We show that the four most common static feature transforms (diagonal, linear, low-rank, nonlinear) are limiting cases of the proposed attention map and are recovered when the context token is removed and the attention is restricted; this makes TAFS a strict superset.
+\item We propose three combination-head variants (unconstrained, affine, convex), discuss when each is preferable. 
+%, and give a short stationary-point argument for the smooth-loss training objective in Appendix~\ref{app:convergence}.
+\item We evaluate TAFS on a controlled synthetic regime-switch task and on seven real datasets spanning energy, finance, retail and meteorology, against eleven baselines that include individual forecasters, classical feature selection, static learned transforms, and meta-learners without feature selection. TAFS attains the lowest average MASE and sMAPE on every dataset.
+\item We release the full reproducibility package, including source code, training configurations, and dataset preprocessing pipelines, at \url{https://github.com/huseyin-karaca/tafs}.
+\end{itemize}
+
+\subsection{Organization}
+The remainder of this article is organized as follows. Section~\ref{sec:problem} formalises the problem. Section~\ref{sec:method} describes the architecture and the training procedure. Section~\ref{sec:experiments} reports the synthetic study, the real-data comparison and the ablations. Section~\ref{sec:conclusion} concludes.
+% Appendix~\ref{app:convergence} sketches the convergence argument.
+
+\section{Problem Definition}
+\label{sec:problem}
+
+We consider a univariate sequential regression problem with exogenous covariates. At each time step $t = 1,\dots,T$ the target $y_t \in \mathbb{R}$ is observed together with a vector of engineered features $\mathbf{x}_t \in \mathbb{R}^p$ built from lags of $y$, rolling statistics, calendar variables and exogenous series. We assume a fixed pool of $K$ pretrained base forecasters
+\[
+\mathcal{F} = \{f_1, f_2, \dots, f_K\},
+\]
+each of which produces a one-step prediction $\hat{y}^{(k)}_t = f_k(\mathbf{x}_t)$ from the same $\mathbf{x}_t$.\footnote{The framework supports multi-step forecasting unchanged; we treat the $H$-step prediction as a vector and average the loss over the horizon. We keep the one-step notation for clarity.} The base predictions are computed offline and cached.
+
+Let $\boldsymbol{\hat{y}}_t = \bigl(\hat{y}^{(1)}_t,\dots,\hat{y}^{(K)}_t\bigr)^\top \in \mathbb{R}^K$. A combination policy is a function $\pi_\theta$ that takes $\mathbf{x}_t$ together with a context summary $\mathbf{s}_t \in \mathbb{R}^{d_c}$ and returns a weight vector
+\[
+\mathbf{w}_t = \pi_\theta(\mathbf{x}_t, \mathbf{s}_t) \in \mathcal{W} \subseteq \mathbb{R}^K,
+\]
+where the admissible set $\mathcal{W}$ encodes one of three constraint regimes:
+\begin{align}
+\mathcal{W}_{\mathrm{u}}      &= \mathbb{R}^K,\\
+\mathcal{W}_{\mathrm{a}}      &= \{\mathbf{w} \in \mathbb{R}^K : \mathbf{1}^\top \mathbf{w} = 1\},\\
+\mathcal{W}_{\mathrm{c}}      &= \{\mathbf{w} \in \mathbb{R}^K_{\ge 0} : \mathbf{1}^\top \mathbf{w} = 1\}.
+\end{align}
+The combined prediction is $\tilde{y}_t = \mathbf{w}_t^\top \boldsymbol{\hat{y}}_t$. Given a per-step loss $\ell : \mathbb{R} \times \mathbb{R} \to \mathbb{R}_{\ge 0}$ (squared, Huber, or pinball), training minimises the cumulative loss
+\begin{equation}
+\label{eq:cumloss}
+\mathcal{L}(\theta) \;=\; \frac{1}{T} \sum_{t=1}^{T} \ell\!\bigl(y_t,\, \pi_\theta(\mathbf{x}_t, \mathbf{s}_t)^\top \boldsymbol{\hat{y}}_t\bigr).
+\end{equation}
+
+In the regime of interest $p$ is typically large (tens to several hundred), $T$ is moderate (several hundred to several thousand), and the conditional importance of features in $\mathbf{x}_t$ for predicting $y_t$ is non-stationary in $t$. Selection mechanisms that compress $\mathbf{x}_t$ into a single static map discard this temporal structure and plateau above the per-step oracle, $\mathbf{w}_t^\star = \mathbf{e}_{\arg\min_k \ell(y_t,\hat{y}^{(k)}_t)}$.
+
+\section{Proposed Work}
+\label{sec:method}
+
+We instantiate $\pi_\theta$ as a feature-axis transformer with context conditioning, followed by a constraint-aware combination head. An overview is given in Figure~\ref{fig:architecture}.
+
+\input{figures/fig_architecture.tex}
+
+\subsection{Feature-Axis Tokenization}
+\label{sec:features}
+
+The transformer treats each of the $p$ engineered features as a separate token in a sequence of length $p$. For feature $j$ at time $t$, the input token is
+\begin{equation}
+\mathbf{t}_{t,j} \;=\; a_j \cdot x_{t,j} \;+\; \mathbf{e}_j \;\in\; \mathbb{R}^d,
+\end{equation}
+where $a_j \in \mathbb{R}^d$ is a learnable scaling vector that lifts the scalar feature value into the model dimension $d$, and $\mathbf{e}_j \in \mathbb{R}^d$ is a learnable feature-identity embedding. Features are organised into named families (lags, rollings, calendar, exogenous, regime indicators); to encourage early structure during training we initialise $\mathbf{e}_j$ to a family-specific anchor plus small Gaussian noise.
+
+Before applying the transformer we prepend two extra tokens. The first is a CLS token $\mathbf{c}_\mathrm{cls} \in \mathbb{R}^d$, used as the readout for the combination head; the second is a context token $\mathbf{c}_t = W_c \mathbf{s}_t + \mathbf{b}_c$, where $\mathbf{s}_t$ stacks (a) the most recent $L_y$ lags of $y$, (b) the residuals of $y_t$ against a simple seasonal-na\"ive predictor, and (c) optional regime indicators (e.g.\ binary flags for trading vs.\ non-trading days). The input sequence to the transformer is
+\begin{equation}
+\mathbf{Z}_t^{(0)} \;=\; (\mathbf{c}_\mathrm{cls},\, \mathbf{c}_t,\, \mathbf{t}_{t,1},\, \mathbf{t}_{t,2},\, \dots,\, \mathbf{t}_{t,p}) \;\in\; \mathbb{R}^{(p+2)\times d}.
+\end{equation}
+
+\subsection{Feature-Axis Transformer}
+
+We apply a stack of $L$ pre-norm transformer encoder layers~\cite{vaswani2017attention} with $h$ heads, hidden width $d$, and feed-forward width $d_{\mathrm{ffn}}$:
+\begin{align}
+\mathbf{Z}_t^{(\ell+\tfrac{1}{2})} &= \mathbf{Z}_t^{(\ell)} + \mathrm{MHA}\!\bigl(\mathrm{LN}(\mathbf{Z}_t^{(\ell)})\bigr),\\
+\mathbf{Z}_t^{(\ell+1)} &= \mathbf{Z}_t^{(\ell+\tfrac{1}{2})} + \mathrm{FFN}\!\bigl(\mathrm{LN}(\mathbf{Z}_t^{(\ell+\tfrac{1}{2})})\bigr).
+\end{align}
+No positional encoding is added: the feature axis is permutation-invariant, and the identity embeddings $\mathbf{e}_j$ already encode which token corresponds to which feature.
+
+The output of the final layer is $\mathbf{Z}_t^{(L)} \in \mathbb{R}^{(p+2)\times d}$. We define
+\begin{equation}
+\mathbf{u}_t \;=\; \mathbf{Z}_t^{(L)}[0,:] \;\in\; \mathbb{R}^d
+\end{equation}
+as the task-aligned summary read from the CLS position. We also keep the per-feature attention weights $A^{(\ell,m)}_{0,j+2}$ from the CLS token to each feature token $j$ at layer $\ell$ and head $m$ for interpretation; averaged over layers and heads they give a single feature-importance score per step,
+\begin{equation}
+\label{eq:alpha}
+\alpha_{t,j} \;=\; \frac{1}{Lh} \sum_{\ell=1}^{L} \sum_{m=1}^{h} A^{(\ell,m)}_{0,\,j+2}.
+\end{equation}
+We use $\alpha_{t,j}$ to produce the heatmaps in Section~\ref{sec:results}.
+
+\paragraph*{Recovery of static transforms.} If we drop the context token, restrict the transformer to a single layer with a single head, and tie the queries and keys to be the identity, the CLS readout reduces to a weighted sum $\sum_j \alpha_j a_j x_{t,j}$ with $\alpha$ shared across $t$. This recovers diagonal gating; further re-parameterising $a_j$ recovers linear and low-rank transforms, and replacing $\mathrm{MHA}$ with an MLP on the concatenation recovers the nonlinear bottleneck. The static feature transforms used as baselines in Section~\ref{sec:experiments} are therefore strict special cases.
+
+\subsection{Constraint-Aware Combination Head}
+
+A small head maps $\mathbf{u}_t$ to combination weights $\mathbf{w}_t$. Let $\mathbf{z}_t = W_2\,\mathrm{GELU}(W_1 \mathbf{u}_t + \mathbf{b}_1) + \mathbf{b}_2 \in \mathbb{R}^K$. We then project $\mathbf{z}_t$ onto $\mathcal{W}$:
+\begin{itemize}
+\item \emph{Unconstrained:} $\mathbf{w}_t = \mathbf{z}_t$.
+\item \emph{Affine:} $\mathbf{w}_t = \mathbf{z}_t - \tfrac{1}{K}(\mathbf{1}^\top \mathbf{z}_t - 1)\mathbf{1}$, i.e.\ the orthogonal projection onto the hyperplane $\mathbf{1}^\top \mathbf{w}=1$.
+\item \emph{Convex:} $\mathbf{w}_t = \mathrm{softmax}(\mathbf{z}_t / \tau)$ with temperature $\tau{=}1$.
+\end{itemize}
+All three projections are smooth in $\theta$ (the softmax is smooth; the affine projection is linear), so the cumulative loss in~\eqref{eq:cumloss} is differentiable everywhere and back-propagation through the head, the transformer and the tokenizer is standard. Base forecasters are frozen.
+
+\subsection{Training Procedure}
+
+The full training procedure is summarised in Algorithm~\ref{alg:train}. We use AdamW~\cite{loshchilov2019adamw} with linear warmup followed by cosine annealing, mini-batches drawn over time-aligned windows, gradient clipping, and an early-stopping criterion on the rolling validation loss.
+
+\begin{algorithm}[t]
+\caption{Offline Training of TAFS}
+\label{alg:train}
+\begin{algorithmic}[1]
+\Require Training set $\{(\mathbf{x}_t,\mathbf{s}_t,y_t)\}_{t=1}^{T_{\mathrm{tr}}}$; frozen base forecasters $\{f_1,\dots,f_K\}$; per-step loss $\ell$; constraint regime $\mathcal{W}$; optimizer hyperparameters.
+\Ensure Trained parameters $\theta = \{a_j,\mathbf{e}_j,W_c,\mathbf{b}_c, \text{transformer}, W_1,\mathbf{b}_1,W_2,\mathbf{b}_2\}$.
+\State Cache base predictions $\boldsymbol{\hat{y}}_t = (f_k(\mathbf{x}_t))_{k=1}^K$ for all $t$.
+\State Initialise $\theta$ (Xavier; identity embeddings as in Section~\ref{sec:features}).
+\For{epoch $= 1,\dots,E$}
+  \For{mini-batch $\mathcal{B} \subset \{1,\dots,T_{\mathrm{tr}}\}$}
+    \State Build $\mathbf{Z}_t^{(0)}$ for every $t\in\mathcal{B}$.
+    \State Compute $\mathbf{u}_t$ through the transformer; head $\to \mathbf{z}_t$.
+    \State Project to $\mathbf{w}_t \in \mathcal{W}$.
+    \State Predict $\tilde{y}_t = \mathbf{w}_t^\top \boldsymbol{\hat{y}}_t$.
+    \State Compute $\mathcal{L}_\mathcal{B}(\theta) = \frac{1}{|\mathcal{B}|}\sum_{t\in\mathcal{B}} \ell(y_t,\tilde{y}_t)$.
+    \State Update $\theta \leftarrow \mathrm{AdamW}(\theta, \nabla_\theta \mathcal{L}_\mathcal{B})$.
+  \EndFor
+  \State Evaluate $\mathcal{L}_{\mathrm{val}}$; early-stop if no improvement for $E_{\mathrm{pat}}$ epochs.
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+At inference time, TAFS adds a single forward pass through a small transformer plus a linear head; the base predictions $\boldsymbol{\hat{y}}_t$ dominate the cost and are already required by the simple-average baseline. The inference overhead is therefore comparable to that of a single small ensemble combiner.
+
+\section{Experimental Work}
+\label{sec:experiments}
+
+\subsection{Datasets and Feature Extraction}
+\label{sec:datasets}
+
+We evaluate on seven public datasets covering energy demand, finance, retail and meteorology. Table~\ref{tab:datasets} gives the size, the number of engineered features after the extraction pipeline, and the forecasting horizon.
+
+\input{figures/table_datasets.tex}
+
+For every dataset we apply the same engineered-feature pipeline: lags up to $L_{\max}{=}24$ for low-frequency series and up to $L_{\max}{=}168$ for high-frequency series; rolling means, medians and standard deviations at windows $\{3,7,14,28\}$; calendar variables (day-of-week, month, hour, holiday flag); and the available exogenous series (temperature, opening prices, promotions, etc.) lagged by the same horizons. We standardise within the training window and apply the same statistics to the validation and test windows.
+
+\subsection{Models and Baselines}
+
+Our baselines are organised in five groups; the same base-predictor pool is used everywhere so that the differences come from the selection/combination mechanism only.
+
+\paragraph*{Individual base predictors.} LightGBM~\cite{ke2017lightgbm}, XGBoost~\cite{chen2016xgboost}, CatBoost~\cite{prokhorenkova2018catboost}, Random Forest~\cite{breiman2001randomforest}, Lasso~\cite{tibshirani1996lasso}, MLP, LSTM~\cite{hochreiter1997lstm}, SARIMAX~\cite{box2015tsbook}, and a Na\"ive last-value predictor. Each predictor is tuned on the same validation window with a fixed search budget. Base forecasters consume the raw, standardised feature vector $\mathbf{x}_t$ and are not retrained when paired with a static transform or with TAFS; the transform and the combination head are the only learnable modules in those configurations.
+
+\paragraph*{Classical feature selection plus a regressor.} Pearson-correlation filter, mutual-information filter~\cite{cover1991ifs}, and an embedded SelectFromModel selector~\cite{guyon2003introfs}; all paired with LightGBM as the downstream regressor.
+
+\paragraph*{Static learned feature transforms.} Diagonal gating, full linear transform, low-rank ($r{=}16$) bottleneck, and a small nonlinear MLP transform. Each transform produces an alternative representation $\tilde{\mathbf{x}}_t$ that is consumed only by the affine combination head; the frozen base forecasters continue to operate on the raw $\mathbf{x}_t$, so no base predictor is retrained. The transforms share the same end-to-end training recipe and the same base pool as TAFS and differ from it only in that the transform is static while TAFS conditions on $\mathbf{s}_t$.
+
+\paragraph*{Meta-learners without feature selection.} An MLP-ensemble combiner under the affine constraint and a LightGBM-ensemble combiner under the convex constraint; both operate on the same engineered features.
+
+\paragraph*{Conventional ensembles and oracle.} Simple average of all base predictors; equal-weight stacking~\cite{wolpert1992stacking,breiman1996stacked}; and a per-step oracle that selects the base predictor with the lowest error at each $t$.
+
+\subsection{Training and Evaluation Setup}
+
+For all learnable methods we use AdamW~\cite{loshchilov2019adamw} with learning rate $10^{-3}$, weight decay $10^{-2}$, batch size $64$, gradient clipping at $1.0$, 200 warmup steps, cosine annealing, and early stopping with patience $E_{\mathrm{pat}}{=}15$. The per-step loss $\ell$ in~\eqref{eq:cumloss} is the squared error on all real datasets; the Huber and pinball options described in Section~\ref{sec:problem} are exposed by the framework but not exercised in the experiments reported here. The default TAFS configuration uses $d{=}128$, $h{=}4$ heads, $L{=}3$ layers, $d_{\mathrm{ffn}}{=}512$, dropout $0.1$, and the affine head; all changes are reported in the ablation tables. The resulting model contains approximately $0.6$\,M trainable parameters, which is of the same order as the MLP- and LightGBM-ensemble combiners ($0.1$--$0.4$\,M). Wall-clock measurements on a single NVIDIA A100 indicate that, with cached base predictions, base-predictor evaluation accounts for above 90\% of end-to-end inference time on every dataset; the TAFS forward pass adds at most a 10\% overhead. Training the default configuration converges within 30--90 minutes per dataset.\footnote{For full experimental details, please refer to the reproducibility package.}
+
+We report MASE~\cite{hyndman2006mase} as the primary metric (it is loss-agnostic and scale-free), and sMAPE as a secondary check. Each configuration is trained with five random seeds; we report the mean with the standard deviation in parentheses. The first 60\% of every series is used for training, the next 20\% for validation, and the final 20\% for testing. For multi-step datasets, each base forecaster produces the $H$-step prediction using its native multi-output mode where available (e.g.\ LightGBM with multi-output regressor, LSTM/MLP with $H$ output heads) and a direct (per-horizon) strategy otherwise; recursive forecasting is not used. The combination weights $\mathbf{w}_t$ are shared across horizons and the loss in~\eqref{eq:cumloss} is averaged over $H$.
+
+\subsection{Results and Discussion}
+\label{sec:results}
+
+\subsubsection{Synthetic Regime-Switch Demonstration}
+
+The synthetic study isolates the contribution of context-conditioned attention. We generate $N{=}500$ trajectories of length $T{=}400$ from a two-regime ARMA(2,1) process. The first half of each trajectory is generated under regime A, in which $y_t$ depends only on the first lag and a single rolling-7 statistic plus noise; the second half is generated under regime B, in which $y_t$ depends only on two exogenous series. The remaining $p-4 = 28$ engineered features are nuisance. The regime change is at $t{=}200$, and the change point is hidden from every model.
+
+Figure~\ref{fig:synth_regime} shows the mean attention mass that TAFS allocates to the three feature groups across time. The model concentrates on the regime-A informative features for $t<200$, reallocates its attention within a small number of steps after the switch, and leaves the nuisance features at a low level throughout. 
+% Figure~\ref{fig:synth_mse} shows the corresponding validation MSE during training: TAFS converges to within 5\% of the oracle, while the static-transform baselines plateau higher. 
+Figure~\ref{fig:attn_heatmap} gives the per-step attention map averaged over heads, in which the change point is clearly visible. Table~\ref{tab:synthetic} summarises the synthetic results.
+
+\input{figures/fig_synthetic_regime.tex}
+% \input{figures/fig_synthetic_mse.tex}
+\input{figures/fig_attention_heatmap.tex}
+\input{figures/table_synthetic.tex}
+
+The pattern in Table~\ref{tab:synthetic} matches the visual analysis: every static transform plateaus above 0.19 MSE, and removing the context token from TAFS (TAFS no-context) increases the MSE by approximately 25\%. The full TAFS model recovers the regime structure to within the residual noise floor.
+
+\subsubsection{Real-Data Comparison}
+
+\input{figures/table_main_results.tex}
+\input{figures/table_smape.tex}
+
+Table~\ref{tab:main_results} reports MASE on the seven real datasets across all baselines, and Table~\ref{tab:smape} reports sMAPE for the most representative competitors.
+
+The ordering of the baseline groups is consistent with prior reports: simple averaging and individual predictors trail; classical filter and embedded selection close part of the gap; static learned transforms close more, with the nonlinear bottleneck the lowest-error variant; learned meta-combiners follow; and the per-step oracle lies below all of them. TAFS sits between the lowest-error meta-combiner and the oracle on every dataset.
+
+The relative gain from TAFS is largest on datasets with visible regime structure (Istanbul Stock Exchange, Exchange Rate, ETTm2). On TNG and M4-Quarterly, where the dynamics are dominated by stable seasonality, the gap to the lowest-error static transform is smaller but consistent.
+
+The choice of constraint regime contributes less than the remainder of the architecture. The affine head attains the lowest aggregate MASE, the convex head is preferable when one base predictor occasionally diverges (Exchange Rate), and the unconstrained head is competitive but exhibits slightly higher worst-case error. The spread among the three is within approximately 1.5\% on the aggregate score, while the gap between any TAFS variant and the lowest-error static-transform baseline is between 8\% and 14\%.
+
+\subsubsection{Ablation Studies}
+
+\input{figures/table_ablation.tex}
+% \input{figures/table_constraint_ablation.tex}
+\input{figures/table_context_ablation.tex}
+% \input{figures/fig_heads_depth.tex}
+
+Table~\ref{tab:ablation} reports the central architectural ablation. We replace the feature-axis transformer with each of the four static transforms (keeping the base pool, the head, the loss and the training recipe identical), and we also evaluate a context-stripped variant of TAFS. The static transforms span a range of approximately 12\% in aggregate MASE; the largest single jump is from the best static transform (nonlinear) to TAFS-noCtx (approximately 2\%), and from TAFS-noCtx to the full TAFS (a further 9\%). The gap widens on the regime-switching subset (Exchange + Istanbul Stock Exchange + Synthetic), indicating that context conditioning drives the time-varying selection.
+
+Table~\ref{tab:context} ablates the content of the context token; even using the lagged target alone closes more than half of the gap, adding calendar variables closes most of the rest, and the full context attains the lowest error. The aggregate spread across the three constraint regimes (unconstrained, affine, convex) is within approximately 1.5\% on the seven-dataset average, as discussed in Section~\ref{sec:results}; the affine head is therefore retained as the default. The default transformer configuration $L{=}3$, $h{=}4$ was selected from a coarse sweep over $L\in\{1,2,3,4\}$ and $h\in\{2,4,8\}$ on the validation split; two or three layers with four heads sit in the flat region of the surface, and deeper models overfit on the shorter series.
+% Removed for brevity: constraint-regime ablation table (table_constraint_ablation.tex) and depth/heads sensitivity figure (fig_heads_depth.tex).
+
+\subsubsection{Discussion}
+
+The synthetic and real-data results converge on a single mechanism: context-conditioned attention over feature tokens produces a time-varying importance signal that no static transform recovers. The dominant cost is data efficiency on the shorter series (M4-Quarterly), where the transformer is over-parameterised relative to the available samples; in that regime, parameter sharing across feature families and a shallower stack reduce the gap. No configuration was observed in which a static transform matched the full TAFS model on a non-stationary dataset.
+
+Two practical limitations are stated for completeness. First, the attention map in~\eqref{eq:alpha} is an interpretation aid, not a guarantee; it summarises the model's behaviour on average but should not be interpreted as a formal feature-importance score. Second, the base pool must exhibit sufficient diversity for combination to be informative. When all base predictors produce similar errors, the combination weights collapse to near-uniform values and the per-step oracle gap is small for every combiner, including TAFS.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+We presented TAFS, a feature-axis transformer with context conditioning that performs joint, time-varying feature selection and forecaster combination for sequential regression. The mechanism comprises three components: each engineered feature is represented as a token, a context token derived from the recent target history renders the attention time-varying, and a constrained combination head maps the resulting summary to weights over a frozen pool of base predictors. On a controlled synthetic task TAFS reallocates its attention across a regime change and approaches the per-step oracle, and on seven real datasets it lowers MASE relative to static-transform and meta-learning baselines.
+
+Three directions are immediate. The first is replacing the cumulative squared loss with quantile-based objectives for probabilistic forecasting, which modifies the head alone. The second is extending the input axis to include multiple targets, which would let the same machinery operate in a multivariate setting without changing the feature-axis transformer. The third is replacing the constraint-aware head with a horizon-aware or uncertainty-aware variant: appending the horizon index to $\mathbf{s}_t$ would yield horizon-conditional weights, while a precision-weighted or temperature-adaptive softmax could further attenuate base predictors that diverge in volatile regimes such as Exchange Rate.
+
+% \appendices
+% \section{Stationary-Point Argument}
+% \label{app:convergence}
+
+% We sketch the standard first-order argument for completeness. Assume $\ell(y,\cdot)$ is $L_\ell$-Lipschitz-smooth in its second argument and that all parametric maps in the pipeline (the tokenizer, the transformer, the head, and the projection onto $\mathcal{W}$) are $C^1$ with bounded gradients on the iterates. Let $\mathcal{L}(\theta)$ be the cumulative loss in~\eqref{eq:cumloss}. By the chain rule, $\mathcal{L}$ is $L_{\mathcal{L}}$-smooth with $L_{\mathcal{L}}$ a polynomial in the operator norms of the parameters and in $L_\ell$. Running AdamW with a sufficiently small step size $\eta_t$ satisfying $\sum_t \eta_t = \infty$, $\sum_t \eta_t^2 < \infty$, the standard analysis for smooth non-convex stochastic optimisation~\cite{bottou2018optimization} gives
+% \[
+% \min_{t \le T} \mathbb{E}\!\left[\|\nabla \mathcal{L}(\theta_t)\|^2\right] \;=\; \mathcal{O}\!\left(\frac{1}{\sqrt{T}}\right),
+% \]
+% i.e.\ the iterates converge to a first-order stationary point in expectation. The affine and convex projections are linear and softmax respectively, both $C^\infty$, so they do not change the smoothness picture. We emphasise that this argument is qualitative; it says nothing about the empirical loss landscape, only that the training problem is well-posed for the standard stochastic optimiser.
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}

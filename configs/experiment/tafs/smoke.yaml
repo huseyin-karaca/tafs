@@ -1,0 +1,36 @@
+# Smoke test: runs tafs/synthetic with 1 epoch and 1 seed.
+# Used by ``make smoke`` to verify the end-to-end pipeline without
+# running a full experiment.
+#
+#   python run.py experiment=tafs/smoke
+#   make smoke
+
+defaults:
+  - /data/tafs/synthetic@datamodule_cfg
+  - _self_
+
+_target_: src.tafs.experiments.synthetic.TAFSSyntheticExperiment
+
+parent_name: smoke_v1
+seeds: [0]
+fixed_data_split: false
+allow_dirty: true
+
+trainer_cfg:
+  _target_: pytorch_lightning.Trainer
+  max_epochs: 1
+  gradient_clip_val: 1.0
+  accelerator: cpu
+  devices: 1
+  log_every_n_steps: 1
+  enable_progress_bar: false
+  enable_model_summary: false
+
+methods:
+  uniform:
+    _target_: src.tafs.models.baselines.UniformEnsemble
+    num_experts: 3
+
+  oracle:
+    _target_: src.tafs.models.baselines.OracleRouter
+    num_experts: 3

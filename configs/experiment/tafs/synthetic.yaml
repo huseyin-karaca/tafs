@@ -1,0 +1,91 @@
+# Synthetic regime-switch experiment (Section IV-D-1).
+#
+# Runs every method listed under ``methods:`` for each seed in ``seeds:``.
+# MLflow layout:
+#     experiment  -> tafs
+#     parent run  -> synth_v1
+#     child run   -> <method_name>
+#     grandchild  -> seed_<n>_split_<n>
+#
+# Run with:
+#     python run.py experiment=tafs/synthetic
+#     make run CONFIG=tafs/synthetic
+#
+# Override anything inline:
+#     python run.py experiment=tafs/synthetic trainer.max_epochs=5
+
+defaults:
+  - /data/tafs/synthetic@datamodule_cfg
+  - _self_
+
+_target_: src.tafs.experiments.synthetic.TAFSSyntheticExperiment
+
+parent_name: synth_v1
+seeds: [0, 1, 2, 3, 4]   # 5 seeds -> mean ± std reported in Table II
+fixed_data_split: false   # each seed re-derives both split and model init
+allow_dirty: true
+
+trainer_cfg:
+  _target_: pytorch_lightning.Trainer
+  max_epochs: 200
+  gradient_clip_val: 1.0
+  accelerator: auto
+  devices: 1
+  log_every_n_steps: 20
+  enable_progress_bar: false
+  enable_model_summary: false
+
+methods:
+  # --- Training-free baselines -------------------------------------------
+  uniform:
+    _target_: src.tafs.models.baselines.UniformEnsemble
+    num_experts: 3
+
+  oracle:
+    _target_: src.tafs.models.baselines.OracleRouter
+    num_experts: 3
+
+  random:
+    _target_: src.tafs.models.baselines.RandomRouter
+    num_experts: 3
+    seed: 0
+
+  # --- Meta-learner without feature selection ----------------------------
+  mlp_ensemble:
+    _target_: src.tafs.models.meta_learners.MLPEnsembleRouter
+    num_features: 32
+    num_experts: 3
+    hidden_dim: 256
+    constraint: affine
+    learning_rate: 1.0e-3
+    weight_decay: 1.0e-2
+    warmup_steps: 200
+    early_stopping_patience: 15
+
+  # --- Static transform ablations (Table V) ------------------------------
+  diagonal_gating:
+    _target_: src.tafs.models.static_transforms.DiagonalGatingRouter
+    num_features: 32
+    num_experts: 3
+    constraint: affine
+    learning_rate: 1.0e-3
+    weight_decay: 1.0e-2
+    warmup_steps: 200
+    early_stopping_patience: 15
+
+  # --- TAFS (main model) -------------------------------------------------
+  tafs_affine:
+    _target_: src.tafs.models.tafs.TAFS
+    num_features: 32
+    num_experts: 3
+    context_dim: 16
+    d_model: 128
+    num_heads: 4
+    num_layers: 3
+    d_ffn: 512
+    dropout: 0.1
+    constraint: affine
+    learning_rate: 1.0e-3
+    weight_decay: 1.0e-2
+    warmup_steps: 200
+    early_stopping_patience: 15

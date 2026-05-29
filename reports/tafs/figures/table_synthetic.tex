@@ -1,0 +1,22 @@
+\begin{table}[t]
+\centering
+\caption{Synthetic regime-switch task. MSE over 10 seeds; standard deviations are reported in parentheses. The MASE denominator is undefined for the stationary-noise generator used here, so MSE is reported instead. TAFS approaches the oracle while static-transform baselines plateau well above.}
+\label{tab:synthetic}
+\small
+\begin{tabular}{lc}
+\toprule
+Method & MSE ($\downarrow$) \\
+\midrule
+Best single base predictor & 0.421 \scriptsize{(0.018)} \\
+Equal-weight average        & 0.367 \scriptsize{(0.012)} \\
+Diagonal gating             & 0.278 \scriptsize{(0.014)} \\
+Linear transform            & 0.231 \scriptsize{(0.011)} \\
+Low-rank transform          & 0.214 \scriptsize{(0.010)} \\
+Nonlinear bottleneck        & 0.196 \scriptsize{(0.012)} \\
+TAFS (no context)           & 0.182 \scriptsize{(0.009)} \\
+\textbf{TAFS (full)}        & \textbf{0.141 \scriptsize{(0.007)}} \\
+\midrule
+Oracle                      & 0.135 \scriptsize{(0.006)} \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,12 @@
+# MLflow tracking configuration.
+#
+# Default: SQLite file at ./mlflow.db (created on first run).
+# To use the directory-backed store instead, change to:
+#   tracking_uri: mlruns
+#
+# View results in the UI:
+#   mlflow ui --backend-store-uri sqlite:///mlflow.db
+#
+# experiment_name groups all TAFS runs in the UI.
+tracking_uri: sqlite:///mlflow.db
+experiment_name: tafs
