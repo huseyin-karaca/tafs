@@ -1,22 +1,22 @@
 \begin{table}[t]
 \centering
-\caption{Synthetic regime-switch task. MSE over 10 seeds; standard deviations are reported in parentheses. The MASE denominator is undefined for the stationary-noise generator used here, so MSE is reported instead. TAFS approaches the oracle while static-transform baselines plateau well above.}
+\caption{Synthetic regime-switch task. Combined-prediction MSE (mean over three seeds; standard deviation in parentheses). MASE is undefined under the stationary-noise generator, so MSE is reported. TAFS approaches the oracle while static transforms plateau above.}
 \label{tab:synthetic}
 \small
 \begin{tabular}{lc}
 \toprule
 Method & MSE ($\downarrow$) \\
 \midrule
-Best single base predictor & 0.421 \scriptsize{(0.018)} \\
-Equal-weight average        & 0.367 \scriptsize{(0.012)} \\
-Diagonal gating             & 0.278 \scriptsize{(0.014)} \\
-Linear transform            & 0.231 \scriptsize{(0.011)} \\
-Low-rank transform          & 0.214 \scriptsize{(0.010)} \\
-Nonlinear bottleneck        & 0.196 \scriptsize{(0.012)} \\
-TAFS (no context)           & 0.182 \scriptsize{(0.009)} \\
-\textbf{TAFS (full)}        & \textbf{0.141 \scriptsize{(0.007)}} \\
+Best single base predictor & 0.4162 \scriptsize{(0.0043)} \\
+Equal-weight average & 0.3566 \scriptsize{(0.0042)} \\
+Diagonal gating & 0.3248 \scriptsize{(0.0025)} \\
+Linear transform & 0.3246 \scriptsize{(0.0026)} \\
+Low-rank transform & 0.3395 \scriptsize{(0.0041)} \\
+Nonlinear bottleneck & 0.2392 \scriptsize{(0.0020)} \\
+TAFS (no context) & 0.2188 \scriptsize{(0.0010)} \\
+\textbf{TAFS (full)} & \textbf{0.1292 \scriptsize{(0.0024)}} \\
 \midrule
-Oracle                      & 0.135 \scriptsize{(0.006)} \\
+Oracle & 0.0581 \scriptsize{(0.0003)} \\
 \bottomrule
 \end{tabular}
 \end{table}
