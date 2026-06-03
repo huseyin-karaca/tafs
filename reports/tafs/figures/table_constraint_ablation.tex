@@ -1,15 +1,15 @@
 \begin{table}[t]
 \centering
-\caption{Constraint regime ablation (aggregate MASE over the seven real datasets). The affine head edges out the others on average, while the convex head is preferable when one base predictor occasionally diverges (Exchange).}
+\caption{Constraint-regime spread (aggregate combined-prediction MASE over the real datasets).}
 \label{tab:constraint}
 \small
-\begin{tabular}{lcc}
+\begin{tabular}{lc}
 \toprule
-Constraint regime & aggregate MASE & worst-dataset MASE \\
+Constraint regime & Aggregate MASE \\
 \midrule
-Unconstrained & 0.847 \scriptsize{(.018)} & 1.034 \\
-\textbf{Affine} ($\mathbf{1}^{\!\top}\mathbf{w}{=}1$) & \textbf{0.834} \scriptsize{(.016)} & 1.013 \\
-Convex ($\mathbf{w}\!\succeq\!0,\,\mathbf{1}^{\!\top}\mathbf{w}{=}1$) & 0.840 \scriptsize{(.017)} & \textbf{1.019} \\
+Unconstrained & \textbf{0.357} \\
+Affine (default, $\mathbf{1}^{\!\top}\mathbf{w}{=}1$) & 0.361 \\
+Convex ($\mathbf{w}\!\succeq\!0,\,\mathbf{1}^{\!\top}\mathbf{w}{=}1$) & 0.440 \\
 \bottomrule
 \end{tabular}
 \end{table}
