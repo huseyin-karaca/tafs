@@ -1,40 +1,18 @@
-% \begin{table}[t]
-% \centering
-% \caption{Central architectural ablation. Static feature transforms (diagonal, linear, low-rank, nonlinear) and a context-stripped variant (TAFS-noCtx) are compared against the full TAFS model. Values are aggregate MASE; lower is better. The regime-switching subset is the union of Exchange Rate, Istanbul Stock Exchange and the synthetic task; the gap widens when the underlying regime is non-stationary.}
-% \label{tab:ablation}
-% \small
-% \begin{tabular}{lcc}
-% \toprule
-% Variant & Aggregate (All datasets) & Regime-switching subset \\
-% \midrule
-% Diagonal gating          & 1.05 & 1.27 \\
-% Linear transform         & 0.99 & 1.17 \\
-% Low-rank transform       & 0.96 & 1.11 \\
-% Nonlinear bottleneck     & 0.94 & 1.06 \\
-% TAFS-noCtx               & 0.92 & 1.04 \\
-% \textbf{TAFS (full)}     & \textbf{0.84} & \textbf{0.91} \\
-% \bottomrule
-% \end{tabular}
-% \end{table}
-
-
 \begin{table}[t]
 \centering
-% \caption{Central architectural ablation. Static feature transforms (diagonal, linear, low-rank, nonlinear) and a context-stripped variant (TAFS-noCtx) are compared against the full TAFS model. Values are aggregate MASE; lower is better. The regime-switching subset is the union of Exchange Rate, Istanbul Stock Exchange and the synthetic task; the gap widens when the underlying regime is non-stationary.}
-\caption{Central architectural ablation. Values are aggregate MASE (lower is better). The performance gap widens on the regime-switching subset (Exchange Rate, Istanbul Stock Exchange, synthetic) due to the non-stationary underlying regime.}
+\caption{Central architectural ablation: aggregate combined-prediction MASE over the real datasets (lower is better). Static transforms and a context-stripped TAFS are compared against the full model.}
 \label{tab:ablation}
 \small
-\begin{tabular}{lcc}
+\begin{tabular}{lc}
 \toprule
-Variant & \makecell[c]{Aggregate\\(All datasets)} & \makecell[c]{Regime-switching\\subset} \\
+Variant & Aggregate MASE (real) \\
 \midrule
-Diagonal gating          & 1.05 & 1.27 \\
-Linear transform         & 0.99 & 1.17 \\
-Low-rank transform       & 0.96 & 1.11 \\
-Nonlinear bottleneck     & 0.94 & 1.06 \\
-TAFS-noCtx               & 0.92 & 1.04 \\
-\textbf{TAFS (full)}     & \textbf{0.84} & \textbf{0.91} \\
+Diagonal gating & 1.159 \\
+Linear transform & 1.174 \\
+Low-rank transform & 0.771 \\
+Nonlinear bottleneck & 0.546 \\
+TAFS-noCtx & 0.358 \\
+\textbf{TAFS (full)} & 0.361 \\
 \bottomrule
 \end{tabular}
-\vspace{-0.5cm}
 \end{table}
