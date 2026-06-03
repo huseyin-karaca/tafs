@@ -1,16 +1,14 @@
 \begin{table}[t]
 \centering
-\caption{Context-conditioning ablation. Removing the context token (lagged target and regime indicators) from the transformer input removes the time-varying selection signal and degrades performance most on the non-stationary datasets.}
+\caption{Context-conditioning ablation. Removing the context token removes the time-varying selection signal; the effect is largest on the non-stationary synthetic task.}
 \label{tab:context}
 \small
-\begin{tabular}{lcccc}
+\begin{tabular}{lccc}
 \toprule
-Variant & TNG & ISE & Exchange & Synth.\ \\
+Variant & ISE & Exchange & Synth.\ (MSE) \\
 \midrule
-TAFS (no context) & 0.89 & 0.94 & 1.18 & 0.182 \\
-TAFS (lagged target only) & 0.85 & 0.91 & 1.09 & 0.166 \\
-TAFS (lag.\ + calendar)   & 0.83 & 0.89 & 1.05 & 0.152 \\
-\textbf{TAFS (full context)} & \textbf{0.81} & \textbf{0.86} & \textbf{1.01} & \textbf{0.141} \\
+TAFS (no context) & \textbf{0.249} & \textbf{0.468} & 0.2188 \\
+TAFS (full context) & 0.252 & 0.470 & \textbf{0.1292} \\
 \bottomrule
 \end{tabular}
 \end{table}
